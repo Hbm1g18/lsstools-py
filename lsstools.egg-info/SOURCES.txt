@@ -1,6 +1,0 @@
-lsstools.py
-setup.py
-lsstools.egg-info/PKG-INFO
-lsstools.egg-info/SOURCES.txt
-lsstools.egg-info/dependency_links.txt
-lsstools.egg-info/top_level.txt
