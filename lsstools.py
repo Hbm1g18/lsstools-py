@@ -173,32 +173,32 @@ def feature_to_dxf(file_path, feature_code, output):
     if output.lower().endswith('.dxf'):
         output = output[:-4]
         file_name = f"{output}.dxf"
-        with open(file_name, "w") as file:
-            file.write("0\nSECTION\n2\nHEADER\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n")
-            if isinstance(feature, list) and all(isinstance(item, Point) for item in feature):
-                for point in feature:
-                    file.write("0\nPOINT\n")
-                    file.write(f"8\n{feature_code}\n")
+    with open(file_name, "w") as file:
+        file.write("0\nSECTION\n2\nHEADER\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n")
+        if isinstance(feature, list) and all(isinstance(item, Point) for item in feature):
+            for point in feature:
+                file.write("0\nPOINT\n")
+                file.write(f"8\n{feature_code}\n")
+                file.write(f"10\n{point.x}\n")
+                file.write(f"20\n{point.y}\n")
+                file.write(f"30\n{point.z}\n")
+        
+        elif isinstance(feature, list) and all(isinstance(item, Link) for item in feature):
+            for link in feature:
+                file.write("0\nPOLYLINE\n")
+                file.write("8\n{}\n".format(link.feature_code))
+                file.write("66\n1\n")
+                file.write("70\n8\n")
+                for point in link.points:
+                    file.write("0\nVERTEX\n")
+                    file.write(f"8\n{link.feature_code}\n")
                     file.write(f"10\n{point.x}\n")
                     file.write(f"20\n{point.y}\n")
                     file.write(f"30\n{point.z}\n")
-            
-            elif isinstance(feature, list) and all(isinstance(item, Link) for item in feature):
-                for link in feature:
-                    file.write("0\nPOLYLINE\n")
-                    file.write("8\n{}\n".format(link.feature_code))
-                    file.write("66\n1\n")
-                    file.write("70\n8\n")
-                    for point in link.points:
-                        file.write("0\nVERTEX\n")
-                        file.write(f"8\n{link.feature_code}\n")
-                        file.write(f"10\n{point.x}\n")
-                        file.write(f"20\n{point.y}\n")
-                        file.write(f"30\n{point.z}\n")
-                    file.write("0\nSEQEND\n")
-            file.write("0\nENDSEC\n0\nEOF\n")
-            file.close()
-            print(f"Output saved as {file}")
+                file.write("0\nSEQEND\n")
+        file.write("0\nENDSEC\n0\nEOF\n")
+        file.close()
+        print(f"Output saved as {file}")
 
 def feature_to_geojson(file_path, feature_code, output):
     """
@@ -248,3 +248,101 @@ def feature_to_geojson(file_path, feature_code, output):
         import json
         json.dump(geojson, file, indent=4)
     print(f"GeoJSON output saved as {file_name}")
+
+def lss_to_csv(file_path, output):
+    """
+    Converts all data from load file to .csv format.
+    """
+    links, points = read_data(file_path)
+    if output.lower().endswith(".csv"):
+        output = output[:-4]
+    filename = f"{output}.csv"
+    with open(filename, "w") as file:
+        file.write("id,x,y,z,feature,link_id\n")
+        current_link_id = 0
+        for link in links:
+            current_link_id += 1
+            for point in link.points:
+                id = point.id
+                x = point.x
+                y = point.y
+                z = point.z 
+                feature = point.feature_code
+                file.write(f"{id},{x},{y},{z},{feature},{current_link_id}\n")
+        for point in points:
+             id = point.id
+             x = point.x
+             y = point.y
+             z = point.z 
+             feature = point.feature_code
+             file.write(f"{id},{x},{y},{z},{feature}\n")
+    file.close()
+    print(f"Load file converted to CSV and saved as: {filename}")
+
+def boundinggeom(file_path):
+    """
+    2D Convex hull calculation for finding outer perimeter
+    """
+    links, points = read_data(file_path)
+    all_points = []
+    all_points.extend(points)
+    for link in links:
+        all_points.extend(link.points)
+    all_points = list({(p.x, p.y): p for p in all_points}.values())
+    hull = convex_hull_2d(all_points)
+    geojson = hull_to_geojson(hull)
+    
+    return geojson
+
+
+def convex_hull_2d(points):
+    """
+    Computes the 2D convex hull using Andrew's monotone chain algorithm
+    """
+    points = sorted(points, key=lambda p: (p.x, p.y))
+    def cross(o, a, b):
+        return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
+    lower = []
+    for p in points:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], p) <= 0:
+            lower.pop()
+        lower.append(p)
+    upper = []
+    for p in reversed(points):
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], p) <= 0:
+            upper.pop()
+        upper.append(p)
+    return lower[:-1] + upper[:-1]
+
+def hull_to_geojson(hull):
+    """
+    Converts a list of Points forming the convex hull to a GeoJSON FeatureCollection
+    """
+    coordinates = [(point.x, point.y) for point in hull]
+    if coordinates[0] != coordinates[-1]:
+        coordinates.append(coordinates[0])
+
+    geojson = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [coordinates]
+                },
+                "properties": {}
+            }
+        ]
+    }
+    return geojson
+
+def boundaryjson(file_path, output):
+    if output.lower().endswith('geojson'):
+        output = output[:-8]
+    file_name = f"{output}.geojson"
+    geojson = boundinggeom(file_path)
+    with open(file_name, "w") as file:
+        import json
+        json.dump(geojson, file, indent=4)
+    print(f"Boundary produced and saved at: {file_name}")
